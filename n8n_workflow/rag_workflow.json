@@ -85,7 +85,7 @@
       "typeVersion": 1,
       "position": [880, 720],
       "parameters": {
-        "model": "neuralmind/bert-base-portuguese-cased"
+        "model": "sentence-transformers/paraphrase-multilingual-mpnet-base-v2"
       },
       "credentials": {
         "huggingFaceApi": {

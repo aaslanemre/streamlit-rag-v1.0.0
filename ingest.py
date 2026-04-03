@@ -2,9 +2,13 @@
 """
 ingest.py — Document ingestion pipeline for the RAG system (v1.1.3).
 
-Model:      neuralmind/bert-base-portuguese-cased  (BERTimbau)
+Model:      sentence-transformers/paraphrase-multilingual-mpnet-base-v2
 Dimensions: 768
-Language:   Brazilian Portuguese (PT-BR)
+Language:   Brazilian Portuguese (PT-BR) — multilingual BERT, 50+ languages
+
+Note: neuralmind/bert-base-portuguese-cased is not in FastEmbed's ONNX
+registry. paraphrase-multilingual-mpnet-base-v2 is the highest-quality
+FastEmbed-compatible model for PT-BR at 768 dimensions.
 
 Execution provider priority: CoreML (Apple MPS) → CUDA (NVIDIA) → CPU
 Qdrant URL is configurable via --qdrant-url flag or QDRANT_URL env var.
@@ -37,9 +41,10 @@ KNOWLEDGE_BASE_DIR: Path = Path(__file__).parent / "knowledge_base"
 DEFAULT_QDRANT_URL: str  = "http://localhost:6333"
 DEFAULT_COLLECTION: str  = "rag_documents"
 
-# BERTimbau — neuralmind/bert-base-portuguese-cased
-# Fixed at 768 dimensions. Update here if the model is swapped.
-DEFAULT_MODEL: str = "neuralmind/bert-base-portuguese-cased"
+# Multilingual BERT fine-tuned for semantic similarity across 50+ languages.
+# Best FastEmbed-compatible option for Brazilian Portuguese (PT-BR) at 768 dims.
+# neuralmind/bert-base-portuguese-cased is not in FastEmbed's ONNX registry.
+DEFAULT_MODEL: str = "sentence-transformers/paraphrase-multilingual-mpnet-base-v2"
 VECTOR_DIM: int    = 768
 
 CHUNK_SIZE: int    = 512

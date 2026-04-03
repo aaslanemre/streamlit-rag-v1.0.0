@@ -1,5 +1,5 @@
 {
-  "name": "RAG Chat — v1.0.0",
+  "name": "RAG Chat — v1.2.0",
   "nodes": [
     {
       "id": "a1b2c3d4-0001-0001-0001-000000000001",
@@ -52,34 +52,45 @@
       "name": "Vector Store Retriever",
       "type": "@n8n/n8n-nodes-langchain.retrieverVectorStore",
       "typeVersion": 1,
-      "position": [620, 520],
+      "position": [660, 520],
       "parameters": {
         "topK": 4
       }
     },
     {
       "id": "a1b2c3d4-0005-0005-0005-000000000005",
-      "name": "In-Memory Vector Store",
-      "type": "@n8n/n8n-nodes-langchain.vectorStoreInMemory",
+      "name": "Qdrant Vector Store",
+      "type": "@n8n/n8n-nodes-langchain.vectorStoreQdrant",
       "typeVersion": 1,
-      "position": [580, 720],
+      "position": [660, 720],
       "parameters": {
-        "memoryKey": "rag_store_v1"
+        "qdrantCollection": {
+          "__rl": true,
+          "value": "rag_documents",
+          "mode": "id"
+        },
+        "options": {}
+      },
+      "credentials": {
+        "qdrantApi": {
+          "id": "REPLACE_WITH_QDRANT_CREDENTIAL_ID",
+          "name": "Qdrant — Local"
+        }
       }
     },
     {
       "id": "a1b2c3d4-0006-0006-0006-000000000006",
-      "name": "Ollama Embeddings",
-      "type": "@n8n/n8n-nodes-langchain.embeddingsOllama",
+      "name": "HuggingFace Embeddings",
+      "type": "@n8n/n8n-nodes-langchain.embeddingsHuggingFaceInference",
       "typeVersion": 1,
-      "position": [780, 720],
+      "position": [880, 720],
       "parameters": {
-        "model": "nomic-embed-text"
+        "model": "BAAI/bge-small-en-v1.5"
       },
       "credentials": {
-        "ollamaApi": {
-          "id": "REPLACE_WITH_CREDENTIAL_ID",
-          "name": "Ollama — Local"
+        "huggingFaceApi": {
+          "id": "REPLACE_WITH_HF_CREDENTIAL_ID",
+          "name": "HuggingFace — Token"
         }
       }
     },
@@ -141,7 +152,7 @@
         ]
       ]
     },
-    "In-Memory Vector Store": {
+    "Qdrant Vector Store": {
       "ai_vectorStore": [
         [
           {
@@ -152,11 +163,11 @@
         ]
       ]
     },
-    "Ollama Embeddings": {
+    "HuggingFace Embeddings": {
       "ai_embedding": [
         [
           {
-            "node": "In-Memory Vector Store",
+            "node": "Qdrant Vector Store",
             "type": "ai_embedding",
             "index": 0
           }

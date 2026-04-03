@@ -1,0 +1,9 @@
+# Core ingestion dependencies
+fastembed>=0.3.6
+qdrant-client>=1.9.0
+pypdf>=4.3.0
+
+# ONNX Runtime — CPU (default, works on all platforms)
+# For NVIDIA GPU support, replace with: onnxruntime-gpu>=1.18.0
+# For Apple MPS, CoreML support is bundled in the standard onnxruntime on macOS.
+onnxruntime>=1.18.0

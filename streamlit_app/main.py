@@ -1,6 +1,5 @@
 import streamlit as st
 import requests
-import json
 
 # ── Configuration ────────────────────────────────────────────────────────────
 N8N_WEBHOOK_URL = "http://localhost:5678/webhook/rag-chat"

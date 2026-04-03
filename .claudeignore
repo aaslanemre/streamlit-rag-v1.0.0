@@ -1,0 +1,12 @@
+# Python
+venv/
+__pycache__/
+
+# macOS
+.DS_Store
+
+# Documents
+*.pdf
+
+# Data
+qdrant_data/

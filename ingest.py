@@ -49,6 +49,7 @@ VECTOR_DIM: int    = 768
 
 CHUNK_SIZE: int    = 512
 CHUNK_OVERLAP: int = 64
+BATCH_SIZE: int    = 64   # chunks per embed+upsert cycle — keeps peak RAM bounded
 
 SUPPORTED_EXTENSIONS: frozenset[str] = frozenset({".pdf", ".txt", ".md", ".rst"})
 
@@ -240,24 +241,34 @@ def main() -> None:
             continue
 
         chunks = list(chunk_text(text, args.chunk_size, args.chunk_overlap))
-        vectors = list(embedder.embed(chunks))
+        log.info("  %d chunk(s) to embed — processing in batches of %d…",
+                 len(chunks), BATCH_SIZE)
 
-        points = [
-            PointStruct(
-                id=stable_id(file_path.name, idx, chunk),
-                vector=vector.tolist(),
-                payload={
-                    "source":      file_path.name,
-                    "chunk_index": idx,
-                    "text":        chunk,
-                },
-            )
-            for idx, (chunk, vector) in enumerate(zip(chunks, vectors))
-        ]
+        file_chunks = 0
+        for batch_start in range(0, len(chunks), BATCH_SIZE):
+            batch = chunks[batch_start: batch_start + BATCH_SIZE]
+            vectors = list(embedder.embed(batch))
 
-        client.upsert(collection_name=args.collection, points=points)
-        log.info("  Upserted %d chunk(s).", len(points))
-        total_chunks += len(points)
+            points = [
+                PointStruct(
+                    id=stable_id(file_path.name, batch_start + i, chunk),
+                    vector=vector.tolist(),
+                    payload={
+                        "source":      file_path.name,
+                        "chunk_index": batch_start + i,
+                        "text":        chunk,
+                    },
+                )
+                for i, (chunk, vector) in enumerate(zip(batch, vectors))
+            ]
+
+            client.upsert(collection_name=args.collection, points=points)
+            file_chunks += len(points)
+            log.info("  Batch %d–%d upserted (%d points).",
+                     batch_start, batch_start + len(batch) - 1, len(points))
+
+        log.info("  File complete — %d chunk(s) total.", file_chunks)
+        total_chunks += file_chunks
 
     log.info(
         "Ingestion complete. %d total chunk(s) upserted into '%s'.",

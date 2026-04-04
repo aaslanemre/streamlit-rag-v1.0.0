@@ -69,7 +69,10 @@
           "value": "rag_documents",
           "mode": "id"
         },
-        "options": {}
+        "options": {
+          "contentPayloadKey": "text",
+          "metadataPayloadKey": "metadata"
+        }
       },
       "credentials": {
         "qdrantApi": {
@@ -142,11 +145,11 @@
       ]
     },
     "Vector Store Retriever": {
-      "ai_tool": [
+      "ai_retriever": [
         [
           {
             "node": "AI Agent",
-            "type": "ai_tool",
+            "type": "ai_retriever",
             "index": 0
           }
         ]

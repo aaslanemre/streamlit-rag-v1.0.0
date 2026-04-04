@@ -24,7 +24,7 @@
         "promptType": "define",
         "text": "={{ $json.body.message }}",
         "options": {
-          "systemMessage": "You are a technical expert for the ANAREDE software. Your responses must be derived exclusively from the provided context. If the specific technical detail is not present in the retrieved context, state that the information is not available in the manual. Do not use external knowledge or general IT definitions."
+          "systemMessage": "Use ONLY the provided context from the ANAREDE manual. If not found, say so. Do not hallucinate."
         }
       }
     },

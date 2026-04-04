@@ -49,7 +49,7 @@ VECTOR_DIM: int    = 768
 
 CHUNK_SIZE: int    = 512
 CHUNK_OVERLAP: int = 64
-BATCH_SIZE: int    = 64   # chunks per embed+upsert cycle — keeps peak RAM bounded
+BATCH_SIZE: int    = 32   # chunks per embed+upsert cycle — reduced to control peak RAM
 
 SUPPORTED_EXTENSIONS: frozenset[str] = frozenset({".pdf", ".txt", ".md", ".rst"})
 
@@ -83,16 +83,19 @@ def detect_providers() -> list[str]:
 
 
 # ── Text Extraction ───────────────────────────────────────────────────────────
-def _extract_pdf(path: Path) -> str:
+def iter_pdf_pages(path: Path) -> Generator[str, None, None]:
+    """Yield text one page at a time — avoids loading the full document into RAM."""
     reader = pypdf.PdfReader(str(path))
-    return "\n".join(page.extract_text() or "" for page in reader.pages)
+    for page in reader.pages:
+        text = page.extract_text() or ""
+        if text.strip():
+            yield text
 
 
 def extract_text(path: Path) -> str:
+    """Return full plain text for non-PDF files. Returns empty string on failure."""
     suffix = path.suffix.lower()
     try:
-        if suffix == ".pdf":
-            return _extract_pdf(path)
         if suffix in {".txt", ".md", ".rst"}:
             return path.read_text(encoding="utf-8", errors="ignore")
     except Exception as exc:
@@ -234,38 +237,85 @@ def main() -> None:
     for file_path in files:
         relative = file_path.relative_to(kb_dir.parent)
         log.info("Processing: %s", relative)
-
-        text = extract_text(file_path)
-        if not text.strip():
-            log.warning("  No text extracted from '%s' — skipping.", file_path.name)
-            continue
-
-        chunks = list(chunk_text(text, args.chunk_size, args.chunk_overlap))
-        log.info("  %d chunk(s) to embed — processing in batches of %d…",
-                 len(chunks), BATCH_SIZE)
-
         file_chunks = 0
-        for batch_start in range(0, len(chunks), BATCH_SIZE):
-            batch = chunks[batch_start: batch_start + BATCH_SIZE]
-            vectors = list(embedder.embed(batch))
+        global_idx = 0  # chunk index counter across all pages of this file
 
-            points = [
-                PointStruct(
-                    id=stable_id(file_path.name, batch_start + i, chunk),
-                    vector=vector.tolist(),
-                    payload={
-                        "source":      file_path.name,
-                        "chunk_index": batch_start + i,
-                        "text":        chunk,
-                    },
-                )
-                for i, (chunk, vector) in enumerate(zip(batch, vectors))
-            ]
+        if file_path.suffix.lower() == ".pdf":
+            # PDFs are ingested page-by-page to keep peak RAM bounded.
+            # Each page is chunked and embedded independently — no full-document
+            # text accumulation in memory.
+            reader = pypdf.PdfReader(str(file_path))
+            total_pages = len(reader.pages)
+            log.info("  PDF — %d page(s), batch size %d.", total_pages, BATCH_SIZE)
 
-            client.upsert(collection_name=args.collection, points=points)
-            file_chunks += len(points)
-            log.info("  Batch %d–%d upserted (%d points).",
-                     batch_start, batch_start + len(batch) - 1, len(points))
+            pending_chunks: list[tuple[int, str]] = []  # (global_idx, chunk_text)
+
+            for page_num, page in enumerate(reader.pages, start=1):
+                page_text = page.extract_text() or ""
+                if not page_text.strip():
+                    continue
+
+                for chunk in chunk_text(page_text, args.chunk_size, args.chunk_overlap):
+                    pending_chunks.append((global_idx, chunk))
+                    global_idx += 1
+
+                    if len(pending_chunks) >= BATCH_SIZE:
+                        idxs, batch = zip(*pending_chunks)
+                        vectors = list(embedder.embed(list(batch)))
+                        points = [
+                            PointStruct(
+                                id=stable_id(file_path.name, idx, ch),
+                                vector=vec.tolist(),
+                                payload={"source": file_path.name,
+                                         "chunk_index": idx, "text": ch},
+                            )
+                            for idx, ch, vec in zip(idxs, batch, vectors)
+                        ]
+                        client.upsert(collection_name=args.collection, points=points)
+                        file_chunks += len(points)
+                        log.info("  Page %d/%d — batch upserted (%d points, %d total).",
+                                 page_num, total_pages, len(points), file_chunks)
+                        pending_chunks = []
+
+            # Flush remaining chunks
+            if pending_chunks:
+                idxs, batch = zip(*pending_chunks)
+                vectors = list(embedder.embed(list(batch)))
+                points = [
+                    PointStruct(
+                        id=stable_id(file_path.name, idx, ch),
+                        vector=vec.tolist(),
+                        payload={"source": file_path.name,
+                                 "chunk_index": idx, "text": ch},
+                    )
+                    for idx, ch, vec in zip(idxs, batch, vectors)
+                ]
+                client.upsert(collection_name=args.collection, points=points)
+                file_chunks += len(points)
+                log.info("  Final batch upserted (%d points).", len(points))
+
+        else:
+            # Non-PDF files are small enough to process in one pass.
+            text = extract_text(file_path)
+            if not text.strip():
+                log.warning("  No text extracted from '%s' — skipping.", file_path.name)
+                continue
+
+            chunks = list(chunk_text(text, args.chunk_size, args.chunk_overlap))
+            for batch_start in range(0, len(chunks), BATCH_SIZE):
+                batch = chunks[batch_start: batch_start + BATCH_SIZE]
+                vectors = list(embedder.embed(batch))
+                points = [
+                    PointStruct(
+                        id=stable_id(file_path.name, batch_start + i, ch),
+                        vector=vec.tolist(),
+                        payload={"source": file_path.name,
+                                 "chunk_index": batch_start + i, "text": ch},
+                    )
+                    for i, (ch, vec) in enumerate(zip(batch, vectors))
+                ]
+                client.upsert(collection_name=args.collection, points=points)
+                file_chunks += len(points)
 
         log.info("  File complete — %d chunk(s) total.", file_chunks)
         total_chunks += file_chunks

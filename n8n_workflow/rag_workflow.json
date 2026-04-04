@@ -1,5 +1,5 @@
 {
-  "name": "RAG Chat — v1.1.3 PT-BR",
+  "name": "RAG Chat — v1.1.3 ANAREDE",
   "nodes": [
     {
       "id": "a1b2c3d4-0001-0001-0001-000000000001",
@@ -24,7 +24,7 @@
         "promptType": "define",
         "text": "={{ $json.body.message }}",
         "options": {
-          "systemMessage": "Você é um assistente de inteligência artificial especializado em análise de documentos técnicos e acadêmicos. Sua função é fornecer respostas precisas, objetivas e formais baseando-se estritamente nos documentos recuperados da base de dados. Utilize exclusivamente o Português do Brasil (PT-BR) em nível culto. Caso a informação não esteja presente nos documentos, informe formalmente que a base técnica atual não possui dados suficientes para responder à solicitação."
+          "systemMessage": "You are a technical expert for the ANAREDE software. Your responses must be derived exclusively from the provided context. If the specific technical detail is not present in the retrieved context, state that the information is not available in the manual. Do not use external knowledge or general IT definitions."
         }
       }
     },
@@ -54,7 +54,7 @@
       "typeVersion": 1,
       "position": [660, 520],
       "parameters": {
-        "topK": 4
+        "topK": 10
       }
     },
     {

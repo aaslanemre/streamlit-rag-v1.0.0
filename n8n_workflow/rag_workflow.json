@@ -80,17 +80,17 @@
     },
     {
       "id": "a1b2c3d4-0006-0006-0006-000000000006",
-      "name": "HuggingFace Embeddings",
-      "type": "@n8n/n8n-nodes-langchain.embeddingsHuggingFaceInference",
+      "name": "Ollama Embeddings",
+      "type": "@n8n/n8n-nodes-langchain.embeddingsOllama",
       "typeVersion": 1,
       "position": [880, 720],
       "parameters": {
-        "model": "sentence-transformers/paraphrase-multilingual-mpnet-base-v2"
+        "model": "nomic-embed-text"
       },
       "credentials": {
-        "huggingFaceApi": {
-          "id": "REPLACE_WITH_HF_CREDENTIAL_ID",
-          "name": "HuggingFace — Token"
+        "ollamaApi": {
+          "id": "REPLACE_WITH_CREDENTIAL_ID",
+          "name": "Ollama — Local"
         }
       }
     },
@@ -163,7 +163,7 @@
         ]
       ]
     },
-    "HuggingFace Embeddings": {
+    "Ollama Embeddings": {
       "ai_embedding": [
         [
           {

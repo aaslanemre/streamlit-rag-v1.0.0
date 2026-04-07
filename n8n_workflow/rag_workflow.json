@@ -1,12 +1,12 @@
 {
-  "name": "RAG Chat — v1.1.3 ANAREDE",
+  "name": "RAG Chat — ANAREDE v1.1.3",
   "nodes": [
     {
-      "id": "a1b2c3d4-0001-0001-0001-000000000001",
+      "id": "node-webhook-001",
       "name": "Chat Webhook",
       "type": "n8n-nodes-base.webhook",
       "typeVersion": 2,
-      "position": [240, 300],
+      "position": [200, 300],
       "parameters": {
         "httpMethod": "POST",
         "path": "rag-chat",
@@ -15,25 +15,26 @@
       }
     },
     {
-      "id": "a1b2c3d4-0002-0002-0002-000000000002",
+      "id": "node-agent-002",
       "name": "AI Agent",
       "type": "@n8n/n8n-nodes-langchain.agent",
       "typeVersion": 1.7,
       "position": [520, 300],
       "parameters": {
+        "agent": "conversationalRetrievalAgent",
         "promptType": "define",
         "text": "={{ $json.body.message }}",
         "options": {
-          "systemMessage": "Use ONLY the provided context from the ANAREDE manual. If not found, say so. Do not hallucinate."
+          "systemMessage": "Use ONLY the provided context from the ANAREDE manual. If the answer is not found in the retrieved context, state that clearly. Do not use external knowledge or hallucinate."
         }
       }
     },
     {
-      "id": "a1b2c3d4-0003-0003-0003-000000000003",
+      "id": "node-ollama-chat-003",
       "name": "Ollama Chat Model",
       "type": "@n8n/n8n-nodes-langchain.lmChatOllama",
       "typeVersion": 1,
-      "position": [380, 520],
+      "position": [280, 520],
       "parameters": {
         "model": "llama3.2",
         "options": {
@@ -48,21 +49,31 @@
       }
     },
     {
-      "id": "a1b2c3d4-0004-0004-0004-000000000004",
+      "id": "node-memory-004",
+      "name": "Window Buffer Memory",
+      "type": "@n8n/n8n-nodes-langchain.memoryBufferWindow",
+      "typeVersion": 1.3,
+      "position": [520, 520],
+      "parameters": {
+        "contextWindowLength": 10
+      }
+    },
+    {
+      "id": "node-retriever-005",
       "name": "Vector Store Retriever",
       "type": "@n8n/n8n-nodes-langchain.retrieverVectorStore",
       "typeVersion": 1,
-      "position": [660, 520],
+      "position": [760, 520],
       "parameters": {
         "topK": 10
       }
     },
     {
-      "id": "a1b2c3d4-0005-0005-0005-000000000005",
+      "id": "node-qdrant-006",
       "name": "Qdrant Vector Store",
       "type": "@n8n/n8n-nodes-langchain.vectorStoreQdrant",
       "typeVersion": 1,
-      "position": [660, 720],
+      "position": [760, 720],
       "parameters": {
         "qdrantCollection": {
           "__rl": true,
@@ -82,11 +93,11 @@
       }
     },
     {
-      "id": "a1b2c3d4-0006-0006-0006-000000000006",
+      "id": "node-embeddings-007",
       "name": "Ollama Embeddings",
       "type": "@n8n/n8n-nodes-langchain.embeddingsOllama",
       "typeVersion": 1,
-      "position": [880, 720],
+      "position": [980, 720],
       "parameters": {
         "model": "nomic-embed-text"
       },
@@ -98,11 +109,11 @@
       }
     },
     {
-      "id": "a1b2c3d4-0007-0007-0007-000000000007",
+      "id": "node-respond-008",
       "name": "Respond to Webhook",
       "type": "n8n-nodes-base.respondToWebhook",
       "typeVersion": 1.1,
-      "position": [800, 300],
+      "position": [840, 300],
       "parameters": {
         "respondWith": "json",
         "responseBody": "={{ { \"output\": $json.output, \"session_id\": $('Chat Webhook').item.json.body.session_id } }}",
@@ -139,6 +150,17 @@
           {
             "node": "AI Agent",
             "type": "ai_languageModel",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Window Buffer Memory": {
+      "ai_memory": [
+        [
+          {
+            "node": "AI Agent",
+            "type": "ai_memory",
             "index": 0
           }
         ]

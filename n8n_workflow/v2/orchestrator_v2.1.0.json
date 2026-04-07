@@ -1,0 +1,235 @@
+{
+  "name": "Power Systems Orchestrator v2.1.0 — PostgreSQL Session State",
+  "nodes": [
+    {
+      "id": "node-webhook-001",
+      "name": "Chat Webhook",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 2,
+      "position": [160, 300],
+      "parameters": {
+        "httpMethod": "POST",
+        "path": "power-systems-chat",
+        "responseMode": "responseNode",
+        "options": {}
+      }
+    },
+    {
+      "id": "node-pg-fetch-002",
+      "name": "Fetch Session",
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.5,
+      "position": [400, 300],
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "SELECT session_id, study_scope, last_tool_used, message_count, updated_at FROM power_system_sessions WHERE session_id = $1 LIMIT 1",
+        "options": {
+          "queryReplacement": "={{ $('Chat Webhook').item.json.body.session_id }}"
+        }
+      },
+      "credentials": {
+        "postgres": {
+          "id": "REPLACE_WITH_POSTGRES_CREDENTIAL_ID",
+          "name": "PostgreSQL — RAG"
+        }
+      }
+    },
+    {
+      "id": "node-agent-003",
+      "name": "AI Agent",
+      "type": "@n8n/n8n-nodes-langchain.agent",
+      "typeVersion": 1.8,
+      "position": [680, 300],
+      "parameters": {
+        "agent": "toolsAgent",
+        "promptType": "define",
+        "text": "={{ '=== SESSION CONTEXT ===\\nSession ID: ' + $('Chat Webhook').item.json.body.session_id + '\\nPrevious Study Scope: ' + ($('Fetch Session').first()?.json?.study_scope ?? 'NEW SESSION') + '\\nLast Tool Used: ' + ($('Fetch Session').first()?.json?.last_tool_used ?? 'None') + '\\nMessages in Session: ' + ($('Fetch Session').first()?.json?.message_count ?? 0) + '\\n\\n=== USER QUERY ===\\n' + $('Chat Webhook').item.json.body.message }}",
+        "options": {
+          "systemMessage": "You are the Central Orchestrator for Power System Studies. Use the session context provided at the start of each message to maintain continuity across turns.\n\nStep 1 — Read the session context block. If 'Previous Study Scope' is already set, prioritize calling the same tool unless the user explicitly changes domain.\n\nStep 2 — Classify the query:\n- Electrical-Static  → Keywords: power flow, steady-state, Anarede, .PWF, bus voltage, contingency → call anarede_tool\n- Electrical-Dynamic → Keywords: stability, transient, Anatem, oscillation, fault, damping → call anatem_tool\n- Energetic          → Keywords: dispatch, costs, hydro, thermal, Plexos, long-term, CMO → call plexos_tool\n\nStep 3 — If scope is clear, call the tool immediately. If ambiguous, ask exactly: 'Is this a static electrical study (power flow), a dynamic stability study, or an energetic dispatch study?' — never guess."
+        }
+      }
+    },
+    {
+      "id": "node-pg-update-004",
+      "name": "Update Session",
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.5,
+      "position": [960, 300],
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "INSERT INTO power_system_sessions (session_id, study_scope, last_tool_used, last_response, message_count, created_at, updated_at)\nVALUES (\n  $1,\n  CASE\n    WHEN $2 ILIKE '%anarede%' OR $2 ILIKE '%fluxo de pot%' OR $2 ILIKE '%PWF%' OR $2 ILIKE '%power flow%' THEN 'electrical-static'\n    WHEN $2 ILIKE '%anatem%' OR $2 ILIKE '%estabilidade%' OR $2 ILIKE '%stability%' OR $2 ILIKE '%transient%' THEN 'electrical-dynamic'\n    WHEN $2 ILIKE '%plexos%' OR $2 ILIKE '%despacho%' OR $2 ILIKE '%dispatch%' OR $2 ILIKE '%energético%' THEN 'energetic'\n    ELSE 'undefined'\n  END,\n  CASE\n    WHEN $2 ILIKE '%anarede%' OR $2 ILIKE '%fluxo de pot%' OR $2 ILIKE '%PWF%' THEN 'anarede_tool'\n    WHEN $2 ILIKE '%anatem%' OR $2 ILIKE '%estabilidade%' OR $2 ILIKE '%transient%' THEN 'anatem_tool'\n    WHEN $2 ILIKE '%plexos%' OR $2 ILIKE '%despacho%' OR $2 ILIKE '%dispatch%' THEN 'plexos_tool'\n    ELSE NULL\n  END,\n  $2,\n  1,\n  NOW(),\n  NOW()\n)\nON CONFLICT (session_id) DO UPDATE SET\n  study_scope     = CASE\n                      WHEN EXCLUDED.study_scope != 'undefined' THEN EXCLUDED.study_scope\n                      ELSE power_system_sessions.study_scope\n                    END,\n  last_tool_used  = COALESCE(EXCLUDED.last_tool_used, power_system_sessions.last_tool_used),\n  last_response   = EXCLUDED.last_response,\n  message_count   = power_system_sessions.message_count + 1,\n  updated_at      = NOW()\nRETURNING session_id, study_scope, last_tool_used, message_count",
+        "options": {
+          "queryReplacement": "={{ $('Chat Webhook').item.json.body.session_id }},={{ $('AI Agent').item.json.output }}"
+        }
+      },
+      "credentials": {
+        "postgres": {
+          "id": "REPLACE_WITH_POSTGRES_CREDENTIAL_ID",
+          "name": "PostgreSQL — RAG"
+        }
+      }
+    },
+    {
+      "id": "node-respond-005",
+      "name": "Respond to Webhook",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1.1,
+      "position": [1200, 300],
+      "parameters": {
+        "respondWith": "json",
+        "responseBody": "={{ { \"output\": $('AI Agent').item.json.output, \"session_id\": $('Chat Webhook').item.json.body.session_id, \"study_scope\": $('Update Session').item.json.study_scope, \"message_count\": $('Update Session').item.json.message_count } }}",
+        "options": {}
+      }
+    },
+    {
+      "id": "node-ollama-006",
+      "name": "Ollama Chat Model",
+      "type": "@n8n/n8n-nodes-langchain.lmChatOllama",
+      "typeVersion": 1.3,
+      "position": [440, 540],
+      "parameters": {
+        "model": "llama3.2",
+        "options": {
+          "temperature": 0.1
+        }
+      },
+      "credentials": {
+        "ollamaApi": {
+          "id": "REPLACE_WITH_OLLAMA_CREDENTIAL_ID",
+          "name": "Ollama — Local"
+        }
+      }
+    },
+    {
+      "id": "node-memory-007",
+      "name": "Window Buffer Memory",
+      "type": "@n8n/n8n-nodes-langchain.memoryBufferWindow",
+      "typeVersion": 1.3,
+      "position": [680, 540],
+      "parameters": {
+        "contextWindowLength": 10
+      }
+    },
+    {
+      "id": "node-tool-anarede-008",
+      "name": "Anarede Tool",
+      "type": "@n8n/n8n-nodes-langchain.toolWorkflow",
+      "typeVersion": 1.2,
+      "position": [920, 500],
+      "parameters": {
+        "name": "anarede_tool",
+        "description": "Use this for static electrical studies, power flow analysis, and .PWF file modifications. Handles steady-state network analysis, bus voltage profiles, and contingency analysis using the ANAREDE software.",
+        "workflowId": {
+          "__rl": true,
+          "value": "REPLACE_WITH_ANAREDE_WORKFLOW_ID",
+          "mode": "id"
+        },
+        "workflowInputs": {
+          "mappingMode": "defineBelow",
+          "value": {
+            "query": "={{ $json.input }}"
+          }
+        }
+      }
+    },
+    {
+      "id": "node-tool-anatem-009",
+      "name": "Anatem Tool",
+      "type": "@n8n/n8n-nodes-langchain.toolWorkflow",
+      "typeVersion": 1.2,
+      "position": [920, 640],
+      "parameters": {
+        "name": "anatem_tool",
+        "description": "Use this for dynamic stability and transient analysis. Handles electromechanical transients, voltage stability, small-signal analysis, and dynamic simulations using the ANATEM software.",
+        "workflowId": {
+          "__rl": true,
+          "value": "REPLACE_WITH_ANATEM_WORKFLOW_ID",
+          "mode": "id"
+        },
+        "workflowInputs": {
+          "mappingMode": "defineBelow",
+          "value": {
+            "query": "={{ $json.input }}"
+          }
+        }
+      }
+    },
+    {
+      "id": "node-tool-plexos-010",
+      "name": "Plexos Tool",
+      "type": "@n8n/n8n-nodes-langchain.toolWorkflow",
+      "typeVersion": 1.2,
+      "position": [920, 780],
+      "parameters": {
+        "name": "plexos_tool",
+        "description": "Use this for energetic studies, hydro/thermal dispatch optimization, CMO analysis, costs, and long-term generation planning. Handles energy market studies and multi-year expansion planning using PLEXOS.",
+        "workflowId": {
+          "__rl": true,
+          "value": "REPLACE_WITH_PLEXOS_WORKFLOW_ID",
+          "mode": "id"
+        },
+        "workflowInputs": {
+          "mappingMode": "defineBelow",
+          "value": {
+            "query": "={{ $json.input }}"
+          }
+        }
+      }
+    }
+  ],
+  "connections": {
+    "Chat Webhook": {
+      "main": [
+        [{ "node": "Fetch Session", "type": "main", "index": 0 }]
+      ]
+    },
+    "Fetch Session": {
+      "main": [
+        [{ "node": "AI Agent", "type": "main", "index": 0 }]
+      ]
+    },
+    "AI Agent": {
+      "main": [
+        [{ "node": "Update Session", "type": "main", "index": 0 }]
+      ]
+    },
+    "Update Session": {
+      "main": [
+        [{ "node": "Respond to Webhook", "type": "main", "index": 0 }]
+      ]
+    },
+    "Ollama Chat Model": {
+      "ai_languageModel": [
+        [{ "node": "AI Agent", "type": "ai_languageModel", "index": 0 }]
+      ]
+    },
+    "Window Buffer Memory": {
+      "ai_memory": [
+        [{ "node": "AI Agent", "type": "ai_memory", "index": 0 }]
+      ]
+    },
+    "Anarede Tool": {
+      "ai_tool": [
+        [{ "node": "AI Agent", "type": "ai_tool", "index": 0 }]
+      ]
+    },
+    "Anatem Tool": {
+      "ai_tool": [
+        [{ "node": "AI Agent", "type": "ai_tool", "index": 0 }]
+      ]
+    },
+    "Plexos Tool": {
+      "ai_tool": [
+        [{ "node": "AI Agent", "type": "ai_tool", "index": 0 }]
+      ]
+    }
+  },
+  "active": false,
+  "settings": {
+    "executionOrder": "v1"
+  },
+  "meta": {
+    "templateCredsSetupCompleted": false,
+    "instanceId": "streamlit-rag-v1"
+  }
+}
